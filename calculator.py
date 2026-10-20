@@ -1,4 +1,4 @@
-"""Math for a generic, edge-aligned STM32 timer update event."""
+"""Math for a timer output that toggles at each update event."""
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
@@ -49,6 +49,7 @@ def solve(
     """Solve one variable, given the other three.
 
     T = (PSC + 1) * (ARR + 1) / timer_input_clock.
+    T is one output level; the full square-wave period is 2T.
     ARR and PSC outputs include the closest feasible register value.
     """
     if target not in {"T", "Output frequency", "ARR", "PSC", "Clock"}:
@@ -76,7 +77,7 @@ def solve(
         if target == "T":
             return Result(Decimal((psc + 1) * (arr + 1)) / clock_hz)
         if target == "Output frequency":
-            return Result(clock_hz / Decimal((psc + 1) * (arr + 1)))
+            return Result(clock_hz / Decimal(2 * (psc + 1) * (arr + 1)))
         if target == "Clock":
             return Result(Decimal((psc + 1) * (arr + 1)) / period_s)
 

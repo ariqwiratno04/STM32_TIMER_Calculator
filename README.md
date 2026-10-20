@@ -50,20 +50,20 @@ If the `python` command opens the Microsoft Store on Windows, install Python fro
 
 For the last four choices, use **Timing value** to switch between entering T and output frequency. When solving for ARR or PSC, the app shows the ideal value, nearest valid integer register value, achieved timing, and period error. When solving for both, it searches for the ARR/PSC pair with the smallest period error. Ties favor the smaller PSC to retain more ARR resolution.
 
-**Example:** Select **ARR + PSC**, enter **T = 1 ms** and **timer input clock = 80 MHz**, and leave ARR width at 16 bits. The result is **ARR = 39,999** and **PSC = 1**, giving **1 ms** or **1,000 Hz**.
+**Example:** Select **ARR + PSC**, enter **T = 1 ms** and **timer input clock = 80 MHz**, and leave ARR width at 16 bits. The result is **ARR = 39,999** and **PSC = 1**, giving **1 ms** per output level and a **500 Hz** square wave.
 
 ## How the calculation works
 
-For a generic edge aligned STM32 timer update event:
+For an output that toggles at each edge aligned STM32 timer update event, T is the duration of one HIGH or LOW level. A full square wave is HIGH plus LOW, so its period is 2T:
 
 ```text
 T = (PSC + 1) × (ARR + 1) / timer_input_clock
-output_frequency = 1 / T
+output_frequency = 1 / (2 * T)
 ```
 
 ARR and PSC are register values, so each contributes one more count than its displayed value. PSC is limited to 16 bits; ARR can be 16 or 32 bits depending on the timer.
 
-Enter the clock **actually supplied to the timer**, after any clock-tree multiplication. The output frequency shown is the update frequency; it is also the PWM cycle frequency for typical edge aligned PWM. Center aligned modes and some other timer configurations have different timing rules, so check the reference manual for your MCU and timer.
+Enter the clock **actually supplied to the timer**, after any clock-tree multiplication. The timer update rate is 1/T, or twice the square-wave frequency. This calculation assumes the output toggles once at each update. PWM and other timer modes may use a different relationship; check the reference manual for your MCU and timer.
 
 ## Run tests
 

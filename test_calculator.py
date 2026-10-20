@@ -8,7 +8,7 @@ class TimerMathTests(unittest.TestCase):
     def test_all_four_parameters(self):
         known = dict(period_s=Decimal("0.001"), arr=999, psc=79, clock_hz=Decimal(80_000_000))
         self.assertEqual(solve("T", **known).value, Decimal("0.001"))
-        self.assertEqual(solve("Output frequency", **known).value, Decimal(1000))
+        self.assertEqual(solve("Output frequency", **known).value, Decimal(500))
         self.assertEqual(solve("Clock", **known).value, Decimal(80_000_000))
         self.assertEqual(solve("ARR", **known).register, 999)
         self.assertEqual(solve("PSC", **known).register, 79)
@@ -44,7 +44,7 @@ class TimerMathTests(unittest.TestCase):
         self.assertEqual((result.arr, result.psc), (99_999, 0))
 
     def test_frequency_target_can_be_used_for_registers_and_clock(self):
-        period_s = 1 / Decimal(1000)
+        period_s = 1 / (2 * Decimal(500))
         self.assertEqual(solve("ARR", period_s=period_s, psc=79, clock_hz=Decimal(80_000_000)).register, 999)
         self.assertEqual(solve("Clock", period_s=period_s, arr=999, psc=79).value, Decimal(80_000_000))
         pair = solve_arr_psc(period_s, Decimal(80_000_000))
