@@ -1,4 +1,4 @@
-"""Math for a timer output that toggles at each update event."""
+"""Math for timer outputs that toggle or use edge-aligned PWM."""
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
@@ -18,6 +18,47 @@ class PairResult:
     psc: int
     achieved_period_s: Decimal
     error_percent: Decimal
+
+
+@dataclass(frozen=True)
+class PwmResult:
+    ccr: int
+    duty_cycle: Decimal
+
+
+def pwm_values(
+    arr: int, *, ccr: int | None = None, duty_cycle: Decimal | None = None, arr_bits: int = 16
+) -> PwmResult:
+    """Resolve CCR = duty_cycle * (ARR + 1) for PWM1 with high OC polarity.
+
+    Duty cycle is a fraction from 0 to 1; the output is high while CNT < CCR.
+    """
+    if arr_bits not in (16, 32):
+        raise ValueError("ARR width must be 16 or 32 bits.")
+    register_max = (1 << arr_bits) - 1
+    if type(arr) is not int or not 0 <= arr <= register_max:
+        raise ValueError(f"ARR must be an integer from 0 to {register_max:,}.")
+    if ccr is None and duty_cycle is None:
+        raise ValueError("Enter CCR or duty cycle for PWM.")
+    if duty_cycle is not None and (not duty_cycle.is_finite() or not 0 <= duty_cycle <= 1):
+        raise ValueError("Duty cycle must be a fraction from 0 to 1.")
+
+    counts = arr + 1
+    max_ccr = min(counts, register_max)
+    if ccr is not None and (type(ccr) is not int or not 0 <= ccr <= max_ccr):
+        raise ValueError(f"CCR must be an integer from 0 to {max_ccr:,} for this ARR.")
+    if duty_cycle is not None:
+        with localcontext() as context:
+            context.prec = 50
+            requested_ccr = int((duty_cycle * counts).to_integral_value(rounding=ROUND_HALF_UP))
+        requested_ccr = min(requested_ccr, max_ccr)
+        if ccr is not None and ccr != requested_ccr:
+            raise ValueError("CCR and duty cycle disagree for this ARR.")
+        if ccr is None:
+            ccr = requested_ccr
+    with localcontext() as context:
+        context.prec = 50
+        return PwmResult(ccr, Decimal(ccr) / counts)
 
 
 def decimal_input(text: str, name: str) -> Decimal:
@@ -48,20 +89,20 @@ def solve(
 ) -> Result:
     """Solve one variable, given the other three.
 
-    T = (PSC + 1) * (ARR + 1) / timer_input_clock.
-    T is one output level; the full square-wave period is 2T.
+    t = (PSC + 1) * (ARR + 1) / timer_input_clock.
+    t is one output level; the full square-wave period is T = 2t.
     ARR and PSC outputs include the closest feasible register value.
     """
-    if target not in {"T", "Output frequency", "ARR", "PSC", "Clock"}:
-        raise ValueError("Choose T, output frequency, ARR, PSC, or Clock.")
+    if target not in {"t", "Output frequency", "ARR", "PSC", "Clock"}:
+        raise ValueError("Choose t, output frequency, ARR, PSC, or Clock.")
     if arr_bits not in (16, 32):
         raise ValueError("ARR width must be 16 or 32 bits.")
 
     arr_max = (1 << arr_bits) - 1
     psc_max = 65535
-    if target not in {"T", "Output frequency"}:
+    if target not in {"t", "Output frequency"}:
         if period_s is None or not period_s.is_finite() or period_s <= 0:
-            raise ValueError("T must be a positive, finite period.")
+            raise ValueError("t must be a positive, finite duration.")
     if target != "Clock":
         if clock_hz is None or not clock_hz.is_finite() or clock_hz <= 0:
             raise ValueError("Timer clock must be a positive, finite frequency.")
@@ -74,7 +115,7 @@ def solve(
 
     with localcontext() as context:
         context.prec = 50
-        if target == "T":
+        if target == "t":
             return Result(Decimal((psc + 1) * (arr + 1)) / clock_hz)
         if target == "Output frequency":
             return Result(clock_hz / Decimal(2 * (psc + 1) * (arr + 1)))
@@ -105,7 +146,7 @@ def solve_arr_psc(period_s: Decimal, clock_hz: Decimal, arr_bits: int = 16) -> P
     if arr_bits not in (16, 32):
         raise ValueError("ARR width must be 16 or 32 bits.")
     if not period_s.is_finite() or period_s <= 0:
-        raise ValueError("T must be a positive, finite period.")
+        raise ValueError("t must be a positive, finite duration.")
     if not clock_hz.is_finite() or clock_hz <= 0:
         raise ValueError("Timer clock must be a positive, finite frequency.")
 

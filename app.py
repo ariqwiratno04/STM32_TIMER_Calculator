@@ -9,7 +9,7 @@ configure_tk()
 import tkinter as tk
 from tkinter import ttk
 
-from calculator import decimal_input, register_input, solve, solve_arr_psc
+from calculator import decimal_input, pwm_values, register_input, solve, solve_arr_psc
 
 
 TIME_UNITS = {"s": Decimal(1), "ms": Decimal("0.001"), "µs": Decimal("0.000001"), "ns": Decimal("0.000000001")}
@@ -34,30 +34,30 @@ class TimerCalculator(tk.Tk):
         frame.columnconfigure(1, weight=1)
 
         ttk.Label(frame, text="Calculate").grid(row=0, column=0, sticky="w", pady=(0, 12))
-        self.target = tk.StringVar(value="T")
-        selector = ttk.Combobox(frame, textvariable=self.target, values=("T", "Output frequency", "ARR", "PSC", "Clock", "ARR + PSC"), state="readonly", width=17)
+        self.target = tk.StringVar(value="t")
+        selector = ttk.Combobox(frame, textvariable=self.target, values=("t", "Output frequency", "ARR", "PSC", "Clock", "ARR + PSC"), state="readonly", width=17)
         selector.grid(row=0, column=1, sticky="w", pady=(0, 12))
         selector.bind("<<ComboboxSelected>>", self.on_target_change)
 
         ttk.Label(frame, text="Timing value").grid(row=1, column=0, sticky="w", pady=5)
-        self.timing_mode = tk.StringVar(value="T")
-        self.timing_selector = ttk.Combobox(frame, textvariable=self.timing_mode, values=("T", "Output frequency"), state="readonly", width=17)
+        self.timing_mode = tk.StringVar(value="t")
+        self.timing_selector = ttk.Combobox(frame, textvariable=self.timing_mode, values=("t", "Output frequency"), state="readonly", width=17)
         self.timing_selector.grid(row=1, column=1, sticky="w", pady=5)
         self.timing_selector.bind("<<ComboboxSelected>>", self.on_timing_change)
 
         self.values = {
-            "T": tk.StringVar(value="1"),
+            "t": tk.StringVar(value="1"),
             "Output frequency": tk.StringVar(value="500"),
             "ARR": tk.StringVar(value="999"),
             "PSC": tk.StringVar(value="79"),
             "Clock": tk.StringVar(value="80"),
         }
         self.entries: dict[str, ttk.Entry] = {}
-        labels = {"T": "Level duration (T)", "ARR": "Auto-reload (ARR)", "PSC": "Prescaler (PSC)", "Clock": "Timer input clock"}
-        for row, key in enumerate(("T", "ARR", "PSC", "Clock"), start=2):
+        labels = {"t": "Level duration (t)", "ARR": "Auto-reload (ARR)", "PSC": "Prescaler (PSC)", "Clock": "Timer input clock"}
+        for row, key in enumerate(("t", "ARR", "PSC", "Clock"), start=2):
             label = ttk.Label(frame, text=labels[key])
             label.grid(row=row, column=0, sticky="w", padx=(0, 16), pady=5)
-            if key == "T":
+            if key == "t":
                 self.timing_label = label
             entry = ttk.Entry(frame, textvariable=self.values[key], width=20)
             entry.grid(row=row, column=1, sticky="ew", pady=5)
@@ -75,13 +75,22 @@ class TimerCalculator(tk.Tk):
         ttk.Combobox(frame, textvariable=self.arr_bits, values=("16", "32"), state="readonly", width=7).grid(row=6, column=1, sticky="w", pady=(12, 5))
         ttk.Label(frame, text="bits").grid(row=6, column=2, sticky="w", padx=(8, 0), pady=(12, 5))
 
-        ttk.Button(frame, text="Calculate", command=self.calculate).grid(row=7, column=0, columnspan=3, sticky="ew", pady=(14, 12))
+        self.ccr = tk.StringVar()
+        self.duty_cycle = tk.StringVar()
+        ttk.Label(frame, text="PWM compare (CCR)").grid(row=7, column=0, sticky="w", pady=5)
+        ttk.Entry(frame, textvariable=self.ccr, width=20).grid(row=7, column=1, sticky="ew", pady=5)
+        ttk.Label(frame, text="PWM duty cycle (0–1)").grid(row=8, column=0, sticky="w", pady=5)
+        ttk.Entry(frame, textvariable=self.duty_cycle, width=20).grid(row=8, column=1, sticky="ew", pady=5)
+        ttk.Label(frame, text="e.g. 0.25", anchor="w").grid(row=8, column=2, sticky="w", padx=(8, 0))
+        ttk.Label(frame, text="Optional: enter CCR or duty cycle for PWM1 with high OC polarity (HIGH when CNT < CCR). Output frequency above is for toggle output.", wraplength=430).grid(row=9, column=0, columnspan=3, sticky="w")
+
+        ttk.Button(frame, text="Calculate", command=self.calculate).grid(row=10, column=0, columnspan=3, sticky="ew", pady=(14, 12))
         self.result = tk.StringVar(value="Enter the known values, then click Calculate.")
-        ttk.Label(frame, textvariable=self.result, justify="left", wraplength=430).grid(row=8, column=0, columnspan=3, sticky="w")
-        ttk.Separator(frame).grid(row=9, column=0, columnspan=3, sticky="ew", pady=12)
-        ttk.Label(frame, text="One timer update spans T. The drawing assumes the output toggles at each update.", wraplength=430).grid(row=10, column=0, columnspan=3, sticky="w")
+        ttk.Label(frame, textvariable=self.result, justify="left", wraplength=430).grid(row=11, column=0, columnspan=3, sticky="w")
+        ttk.Separator(frame).grid(row=12, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Label(frame, text="For toggle output, one update spans t and a full cycle spans T = 2t. PWM uses one update per cycle.", wraplength=430).grid(row=13, column=0, columnspan=3, sticky="w")
         self.draw_waveform(frame)
-        ttk.Label(frame, text="Timer clock means the clock at the timer input, after any MCU clock-tree multiplication.", wraplength=430).grid(row=12, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        ttk.Label(frame, text="Timer clock means the clock at the timer input, after any MCU clock-tree multiplication.", wraplength=430).grid(row=15, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
         self.on_target_change()
         self.bind("<Return>", lambda _event: self.calculate())
@@ -89,7 +98,7 @@ class TimerCalculator(tk.Tk):
     @staticmethod
     def draw_waveform(parent: ttk.Frame) -> None:
         canvas = tk.Canvas(parent, width=440, height=165, highlightthickness=0)
-        canvas.grid(row=11, column=0, columnspan=3, sticky="w", pady=(8, 2))
+        canvas.grid(row=14, column=0, columnspan=3, sticky="w", pady=(8, 2))
         left, step, high, low = 40, 90, 32, 78
         canvas.create_line(20, 100, 425, 100, fill="#777777", arrow="last")
         canvas.create_text(426, 113, text="time", anchor="e", fill="#555555")
@@ -104,26 +113,26 @@ class TimerCalculator(tk.Tk):
         for x in (left, left + step, left + 2 * step):
             canvas.create_line(x, 105, x, 125, fill="#777777", dash=(3, 2))
         canvas.create_line(left + 3, 122, left + step - 3, 122, arrow="both", fill="#b45128")
-        canvas.create_text(left + step / 2, 110, text="T", fill="#b45128", font=("TkDefaultFont", 10, "bold"))
+        canvas.create_text(left + step / 2, 110, text="t", fill="#b45128", font=("TkDefaultFont", 10, "bold"))
         canvas.create_line(left + 3, 151, left + 2 * step - 3, 151, arrow="both", fill="#394f84")
-        canvas.create_text(left + step, 137, text="full wave = 2T", fill="#394f84")
-        canvas.create_text(325, 137, text="f = 1 / (2T)", fill="#394f84", font=("TkDefaultFont", 10, "bold"))
+        canvas.create_text(left + step, 137, text="T = 2t", fill="#394f84")
+        canvas.create_text(325, 137, text="f = 1 / T", fill="#394f84", font=("TkDefaultFont", 10, "bold"))
 
     def on_target_change(self, _event: object = None) -> None:
         target = self.target.get()
-        if target in ("T", "Output frequency"):
+        if target in ("t", "Output frequency"):
             self.timing_mode.set(target)
-        self.timing_selector.configure(state="disabled" if target in ("T", "Output frequency") else "readonly")
+        self.timing_selector.configure(state="disabled" if target in ("t", "Output frequency") else "readonly")
         self.on_timing_change()
         for key, entry in self.entries.items():
-            disabled = (key == "T" and target in ("T", "Output frequency")) or key == target or (target == "ARR + PSC" and key in ("ARR", "PSC"))
+            disabled = (key == "t" and target in ("t", "Output frequency")) or key == target or (target == "ARR + PSC" and key in ("ARR", "PSC"))
             entry.configure(state="disabled" if disabled else "normal")
         self.result.set("Enter the known values, then click Calculate.")
 
     def on_timing_change(self, _event: object = None) -> None:
         frequency = self.timing_mode.get() == "Output frequency"
-        self.timing_label.configure(text="Output frequency" if frequency else "Level duration (T)")
-        self.entries["T"].configure(textvariable=self.values["Output frequency" if frequency else "T"])
+        self.timing_label.configure(text="Output frequency" if frequency else "Level duration (t)")
+        self.entries["t"].configure(textvariable=self.values["Output frequency" if frequency else "t"])
         self.timing_unit_selector.configure(
             textvariable=self.frequency_unit if frequency else self.time_unit,
             values=tuple(FREQUENCY_UNITS if frequency else TIME_UNITS),
@@ -131,8 +140,8 @@ class TimerCalculator(tk.Tk):
         self.result.set("Enter the known values, then click Calculate.")
 
     def input_period_s(self) -> Decimal:
-        if self.timing_mode.get() == "T":
-            return decimal_input(self.values["T"].get(), "T") * TIME_UNITS[self.time_unit.get()]
+        if self.timing_mode.get() == "t":
+            return decimal_input(self.values["t"].get(), "t") * TIME_UNITS[self.time_unit.get()]
         frequency_hz = decimal_input(self.values["Output frequency"].get(), "Output frequency") * FREQUENCY_UNITS[self.frequency_unit.get()]
         if frequency_hz <= 0:
             raise ValueError("Output frequency must be positive.")
@@ -140,8 +149,28 @@ class TimerCalculator(tk.Tk):
 
     def timing_summary(self, period_s: Decimal) -> str:
         return (
-            f"Achieved T = {display(period_s / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}\n"
+            f"Achieved t = {display(period_s / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}\n"
+            f"Full cycle T = {display((2 * period_s) / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}\n"
             f"Output frequency = {display((1 / (2 * period_s)) / FREQUENCY_UNITS[self.frequency_unit.get()])} {self.frequency_unit.get()}"
+        )
+
+    def pwm_summary(self, arr: int, update_s: Decimal, bits: int) -> str:
+        ccr_text = self.ccr.get().strip()
+        duty_text = self.duty_cycle.get().strip()
+        if not ccr_text and not duty_text:
+            return ""
+        ccr = register_input(ccr_text, "CCR", (1 << bits) - 1) if ccr_text else None
+        duty = decimal_input(duty_text, "Duty cycle") if duty_text else None
+        pwm = pwm_values(arr, ccr=ccr, duty_cycle=duty, arr_bits=bits)
+        unit = self.time_unit.get()
+        frequency_unit = self.frequency_unit.get()
+        high_s = update_s * pwm.ccr / (arr + 1)
+        return (
+            f"\nPWM CCR = {pwm.ccr:,}\n"
+            f"PWM duty cycle = {display(pwm.duty_cycle)} ({display(pwm.duty_cycle * 100)} %)\n"
+            f"PWM full cycle T = {display(update_s / TIME_UNITS[unit])} {unit}\n"
+            f"PWM HIGH time t = {display(high_s / TIME_UNITS[unit])} {unit}\n"
+            f"PWM frequency = {display((1 / update_s) / FREQUENCY_UNITS[frequency_unit])} {frequency_unit}"
         )
 
     def calculate(self) -> None:
@@ -152,47 +181,58 @@ class TimerCalculator(tk.Tk):
                 period_s = self.input_period_s()
                 clock_hz = decimal_input(self.values["Clock"].get(), "Timer clock") * CLOCK_UNITS[self.clock_unit.get()]
                 answer = solve_arr_psc(period_s, clock_hz, bits)
-                self.result.set(
+                result_text = (
                     f"ARR = {answer.arr:,}\n"
                     f"PSC = {answer.psc:,}\n"
                     f"{self.timing_summary(answer.achieved_period_s)}\n"
-                    f"T error = {display(answer.error_percent)} %"
+                    f"t error = {display(answer.error_percent)} %"
                 )
-                return
-            kwargs = {"arr_bits": bits}
-            if target not in ("T", "Output frequency"):
-                kwargs["period_s"] = self.input_period_s()
-            if target != "ARR":
-                kwargs["arr"] = register_input(self.values["ARR"].get(), "ARR", (1 << bits) - 1)
-            if target != "PSC":
-                kwargs["psc"] = register_input(self.values["PSC"].get(), "PSC", 65535)
-            if target != "Clock":
-                kwargs["clock_hz"] = decimal_input(self.values["Clock"].get(), "Timer clock") * CLOCK_UNITS[self.clock_unit.get()]
-            answer = solve(target, **kwargs)
+                pwm_arr = answer.arr
+                update_s = answer.achieved_period_s
+            else:
+                kwargs = {"arr_bits": bits}
+                if target not in ("t", "Output frequency"):
+                    kwargs["period_s"] = self.input_period_s()
+                if target != "ARR":
+                    kwargs["arr"] = register_input(self.values["ARR"].get(), "ARR", (1 << bits) - 1)
+                if target != "PSC":
+                    kwargs["psc"] = register_input(self.values["PSC"].get(), "PSC", 65535)
+                if target != "Clock":
+                    kwargs["clock_hz"] = decimal_input(self.values["Clock"].get(), "Timer clock") * CLOCK_UNITS[self.clock_unit.get()]
+                answer = solve(target, **kwargs)
+
+                if target == "t":
+                    result_text = self.timing_summary(answer.value).replace("Achieved t", "Level duration t")
+                    update_s = answer.value
+                elif target == "Output frequency":
+                    unit = self.frequency_unit.get()
+                    result_text = (
+                        f"Output frequency = {display(answer.value / FREQUENCY_UNITS[unit])} {unit}\n"
+                        f"Level duration t = {display((1 / (2 * answer.value)) / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}\n"
+                        f"Full cycle T = {display((1 / answer.value) / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}"
+                    )
+                    update_s = 1 / (2 * answer.value)
+                elif target == "Clock":
+                    unit = self.clock_unit.get()
+                    result_text = f"Timer input clock = {display(answer.value / CLOCK_UNITS[unit])} {unit}"
+                    update_s = kwargs["period_s"]
+                else:
+                    maximum = (1 << bits) - 1 if target == "ARR" else 65535
+                    range_note = "\nRequested t is outside the range of this register." if answer.value < 0 or answer.value > maximum else ""
+                    result_text = (
+                        f"{target} = {answer.register:,} (nearest usable register value)\n"
+                        f"Ideal {target} = {display(answer.value)}\n"
+                        f"{self.timing_summary(answer.achieved_period_s)}\n"
+                        f"t error = {display(answer.error_percent)} %{range_note}"
+                    )
+                    update_s = answer.achieved_period_s
+                pwm_arr = answer.register if target == "ARR" else kwargs["arr"]
+
+            result_text += self.pwm_summary(pwm_arr, update_s, bits)
         except ValueError as error:
             self.result.set(f"Input error: {error}")
             return
-
-        if target == "T":
-            self.result.set(self.timing_summary(answer.value).replace("Achieved T", "Level duration T"))
-        elif target == "Output frequency":
-            unit = self.frequency_unit.get()
-            self.result.set(
-                f"Output frequency = {display(answer.value / FREQUENCY_UNITS[unit])} {unit}\n"
-                f"Level duration T = {display((1 / (2 * answer.value)) / TIME_UNITS[self.time_unit.get()])} {self.time_unit.get()}"
-            )
-        elif target == "Clock":
-            unit = self.clock_unit.get()
-            self.result.set(f"Timer input clock = {display(answer.value / CLOCK_UNITS[unit])} {unit}")
-        else:
-            maximum = (1 << bits) - 1 if target == "ARR" else 65535
-            range_note = "\nRequested T is outside the range of this register." if answer.value < 0 or answer.value > maximum else ""
-            self.result.set(
-                f"{target} = {answer.register:,} (nearest usable register value)\n"
-                f"Ideal {target} = {display(answer.value)}\n"
-                f"{self.timing_summary(answer.achieved_period_s)}\n"
-                f"T error = {display(answer.error_percent)} %{range_note}"
-            )
+        self.result.set(result_text)
 
 
 if __name__ == "__main__":
